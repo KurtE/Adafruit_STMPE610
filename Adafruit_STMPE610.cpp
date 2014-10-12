@@ -26,6 +26,11 @@
 
 #include "Adafruit_STMPE610.h"
 
+#ifdef __ARDUINO_X86__
+extern void shiftOut(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder, uint8_t value);
+extern uint8_t shiftIn(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder);
+#endif
+
 #if defined (SPI_HAS_TRANSACTION)
 // SPI transaction support allows managing SPI settings and prevents
 // conflicts between libraries, with a hardware-neutral interface
@@ -87,6 +92,10 @@ boolean Adafruit_STMPE610::begin(uint8_t i2caddr) {
     SPI.begin();
     SPI.setClockDivider(84);
     SPI.setDataMode(SPI_MODE0);
+#elif defined(__ARDUINO_X86__)
+    SPI.begin();
+    SPI.setClockDivider(SPI_CLOCK_DIV16);
+    SPI.setDataMode(SPI_MODE0);
 #endif
     m_spiMode = SPI_MODE0;
   } else if (_CS != -1) {
@@ -117,6 +126,9 @@ boolean Adafruit_STMPE610::begin(uint8_t i2caddr) {
 #elif defined (__arm__)
       SPI.setClockDivider(84);
       SPI.setDataMode(SPI_MODE1);
+#elif defined(__ARDUINO_X86__)
+      SPI.setDataMode(SPI_MODE1);
+      SPI.setClockDivider(SPI_CLOCK_DIV16);
 #endif
       m_spiMode = SPI_MODE1;
         
@@ -223,6 +235,11 @@ uint8_t Adafruit_STMPE610::spiIn() {
     SPI.setDataMode(m_spiMode);
     uint8_t d = SPI.transfer(0);
     return d;
+#elif defined(__ARDUINO_X86__)
+    SPI.setClockDivider(SPI_CLOCK_DIV16);
+    SPI.setDataMode(m_spiMode);
+    uint8_t d = SPI.transfer(0);
+    return d;
 #endif
   }
   else
@@ -239,6 +256,10 @@ void Adafruit_STMPE610::spiOut(uint8_t x) {
     SPCR = SPCRbackup;
 #elif defined (__arm__)
     SPI.setClockDivider(84);
+    SPI.setDataMode(m_spiMode);
+    SPI.transfer(x);
+#elif defined(__ARDUINO_X86__)
+    SPI.setClockDivider(SPI_CLOCK_DIV16);
     SPI.setDataMode(m_spiMode);
     SPI.transfer(x);
 #endif
@@ -352,3 +373,43 @@ bool TS_Point::operator==(TS_Point p1) {
 bool TS_Point::operator!=(TS_Point p1) {
   return  ((p1.x != x) || (p1.y != y) || (p1.z != z));
 }
+
+#ifdef __ARDUINO_X86__
+void shiftOut(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder, uint8_t value)
+{
+	uint8_t mask;
+    if (bitOrder == LSBFIRST) {
+	    for (mask=0x01; mask; mask <<= 1) {
+		    digitalWrite(dataPin, value & mask);
+		    digitalWrite(clockPin, HIGH);
+		    digitalWrite(clockPin, LOW);
+		}
+	} else {
+        for (mask=0x80; mask; mask >>= 1) {
+            digitalWrite(dataPin, value & mask);
+            digitalWrite(clockPin, HIGH);
+            digitalWrite(clockPin, LOW);
+        }
+    }
+}
+
+
+uint8_t shiftIn(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder)
+{
+    uint8_t mask, value=0;
+	if (bitOrder == LSBFIRST) {
+        for (mask=0x01; mask; mask <<= 1) {
+            digitalWrite(clockPin, HIGH);
+            if (digitalRead(dataPin)) value |= mask;
+            digitalWrite(clockPin, LOW);
+        }
+	} else {
+        for (mask=0x80; mask; mask >>= 1) {
+            digitalWrite(clockPin, HIGH);
+            if (digitalRead(dataPin)) value |= mask;
+            digitalWrite(clockPin, LOW);
+        }
+	}
+    return value;
+}
+#endif
